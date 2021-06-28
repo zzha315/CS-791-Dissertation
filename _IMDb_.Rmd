@@ -1,0 +1,383 @@
+---
+title: "Vignette 2 (IMDb Movie data)"
+author: "Zhang ZhenYuan zzha315"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, cache = TRUE, message = FALSE)
+```
+## The Data
+
+The [IMdB](https://www.imdb.com) is one of the most famous and popular film review website around the world and it has a large amount of reliable data related to movie. In this program, we'll mainly focus on scraping for the features for one hundred most popular feature movies in 2018 from IMdB and conduct some data analysis and data visualization those features. And those data is recorded in the following web page (https://www.imdb.com/search/title/?count=100&release_date=2018,2018&title_type=feature). 
+
+## Web scraping 
+
+Firstly,we'll use the R package called `rvest` wriiten by H. Wickham, it is a very useful and powerful wrappers around the "xml2" and "httr" packages to make it easy to download and then manipulate HTML and XML. After loading this package into R, we read in the html webpage from its URL and save its content in the variable called 'webpage' .
+```{r}
+if(!require("rvest"))  {install.packages("rvest")}
+library("rvest")
+
+url <- 'https://www.imdb.com/search/title/?count=100&release_date=2018,2018&title_type=feature'
+webpage <- read_html(url)
+```
+Here is a screenshot of the webpage:
+
+![Screenshot for the web Page after openning the attribute table](C:/Users/OMEN/Desktop/UoA/UoA-4/CS 791/IMDB/webpage.png)
+
+Take a feature film as an example,we can see that a movie usually contains the following features:
+
+  + **Rank**, the rank of the top listed films from 1 to 100 , 
+  + **Title**, the name of the film, 
+  + **Runtime**, the time length of the film, 
+  + **Genre**, the genre(type) of the film,
+  + **Votes**, how many people voted for the film,
+  + **Description**,  a brief introduction and description to the film,
+  + **Rating**, the rating of the film,
+  + **Gross_Earning_in_Mil**, the box office revenue of the film,the unit is million,
+  + **Metascore**, the metascore of this film on IMdB,
+  + **Director**, the main director of the film,only show the first one,
+and
+  + **Actor**, the main actor of the film,only show the first one.
+
+
+![Screenshot for the web Page after openning the attribute table](C:/Users/OMEN/Desktop/UoA/UoA-4/CS 791/IMDB/features.png)
+
+Firstly, let's scrape the Rank.We still click the F12 key to view the source code of the web page, and use the selector tool in the chorome browser to get the specific CSS selector containing the Rank. Now we can copy the CSS selector corresponding to Rank: `.text-primary` We use `html_nodes()`function to more easily extract the pieces we want out of HTML documents by using XPath or CSS selectors.Then we use `html_text()` function to extract the text content from the that piece. The format of original result is a number with a full point: '1. 2. 3. .....', we can convert them to numeric format like '1 2 3' by using `as.numeric()` function. 
+
+![Screenshot for the web Page after openning the attribute table](C:/Users/OMEN/Desktop/UoA/UoA-4/CS 791/IMDB/rank.png)
+
+```{r}
+#rank_data
+rank_data_html <- html_nodes(webpage,'.text-primary')
+rank_data <- html_text(rank_data_html)
+#Or combine them together: html_nodes(webpage,'.text-primary') %>% html_text()
+head(rank_data)
+rank_data<-as.numeric(rank_data)
+#check the output
+head(rank_data)
+```
+
+Then we use the same method to get the titles for the top 100 feature film. And the css selector returns '.lister-item-header a' for title, we should change that part in `html_nodes()` function.
+```{r}
+#title_data
+title_data_html <- html_nodes(webpage,'.lister-item-header a')
+title_data <- html_text(title_data_html)
+head(title_data)
+```
+
+Similarly, for runtime data, we can get the original result like '120 min'and its format is composed of numbers and units(min). We only keep the numeric part for later data analysis. Here we need to do some data preprocessing, firstly, we should remove 'min' character. This can be done by using the `gsub`function, it is a function which can replaces all matches of a string. Here we replace 'min' character with ''. Now we can directly convert its format from character to numeric. 
+```{r}
+#runtime_data
+runtime_data_html <- html_nodes(webpage,'.text-muted .runtime')
+runtime_data <- html_text(runtime_data_html)
+head(runtime_data)
+#delete 'min' and convert the format to numerical
+runtime_data<-gsub(" min","",runtime_data)
+runtime_data<-as.numeric(runtime_data)
+head(runtime_data)
+```
+
+For genre data, the css selector returns '.genre', use `head()` to check the initial results. We only want the genre that is most significant, so we just select the first word. Firstly, we remove the '\n' character. Secondly, we remove the extra space. Thirdly, we only keep the first word, which means we should delete all contents after the comma. Here we use the regular expression, `,.*` means mathch from the comma to back until the end of last match. Then we use `gsub` to replace all contents after the first comma (including the first comma) to null. Last, for the convenience of later analysis, we change those genres' formats  from character to factor by using `as.factor`.  
+```{r}
+#genre_data
+genre_data_html <- html_nodes(webpage,'.genre')
+genre_data <- html_text(genre_data_html)
+head(genre_data)
+
+genre_data<-gsub("\n","",genre_data)
+genre_data<-gsub(" ","",genre_data)
+genre_data<-gsub(",.*","",genre_data)
+genre_data<-as.factor(genre_data)
+head(genre_data)
+```
+
+For description data, we try another method. we use the whole Xpath here. There are 100 films, we use a for loop to generate the Xpath for 100 them. In order to change the number in each XPath, we divide it into three parts and the middle part is the rank of the film. We use `paste()` function to connect them. Also, we need to delete the '\n'.
+```{r}
+#description_data
+description_data = character(100)
+first <- '//*[@id="main"]/div/div[3]/div/div['
+middle <- 1:100 
+last <- ']/div[3]/p[2]'
+xpath_ <- paste(first, middle,last, sep="")
+
+for (i in 1:100){
+  description_data[i] <- html_nodes(webpage,xpath = xpath_[i]) %>% html_text()
+  description_data<-gsub("\n","",description_data)
+}
+head(description_data)
+```
+
+Using CSS selectors to scrape the directors and actors sections, and convert them to text. Then convert them to factors.
+```{r}
+#directors_data
+directors_data_html <- html_nodes(webpage,'.text-muted+ p a:nth-child(1)')
+directors_data <- html_text(directors_data_html)
+head(directors_data)
+directors_data<-as.factor(directors_data)
+
+#actors_data
+actors_data_html <- html_nodes(webpage,'.lister-item-content .ghost+ a')
+actors_data <- html_text(actors_data_html)
+head(actors_data)
+actors_data<-as.factor(actors_data)
+```
+
+Same for rating and votes data:
+```{r}
+#rating_data
+rating_data_html <- html_nodes(webpage,'.ratings-imdb-rating strong')
+rating_data <- html_text(rating_data_html)
+rating_data<-as.numeric(rating_data)
+head(rating_data)
+
+
+#votes_data
+votes_data_html <- html_nodes(webpage,'.sort-num_votes-visible span:nth-child(2)')
+votes_data <- html_text(votes_data_html)
+votes_data<-gsub(",","",votes_data)
+votes_data<-as.numeric(votes_data)
+head(votes_data)
+
+```
+
+Use CSS selector to scrape the metascore for the feature films, we can find the original output is a number with long extra space, we use `gsub` to delete the space. Then do a quick check, we find that there are 6 films don't have metascores. After observation, we can find that the Metascore is missing for films 19,50,52,58,65,82,89. Similarly, We use NA to fill in the missing part and keep the total number to 100. Then convert the format to numeric and do a simple summary statistics, we can find the mean meatascore  of the 100 films is 60.84.
+```{r}
+#metascore_data
+metascore_data_html <- html_nodes(webpage,'.metascore')
+metascore_data <- html_text(metascore_data_html)
+head(metascore_data)
+metascore_data<-gsub(" ","",metascore_data)
+#Lets check the length of metascore data
+length(metascore_data)
+
+len<- length(metascore_data) 
+mlen<-100-length(metascore_data)
+mlen
+
+for (i in c(19,50,52,58,65,82,89)){
+  a<-metascore_data[1:(i-1)]
+  b<-metascore_data[i:length(metascore_data)]
+  metascore_data<-append(a,list("NA"))
+  metascore_data<-append(metascore_data,b)
+}
+
+#Data-Preprocessing: converting metascore to numerical
+metascore_data<-as.numeric(metascore_data)
+
+#Let's have another look at length of the metascore data
+length(metascore_data)
+
+#Let's look at summary statistics
+head(metascore_data)
+summary(metascore_data)
+```
+
+Use CSS selector to scrape the gross data for the feature films and the original output is like '$53.80M', we should delete the dollar sign and the million unit for data pre-processing. Firstly, use `gsub` to delete 'M', then we use `substring()` function to get the substring of it, start from the second position and ends at the sixth position and just get the pure number for the gross. After checking, we find that there are 18 movies doesn't have gross data, We need to fill them with NAs. Now the total length is 100 and the summary shows that the min, max and mean of the gross data.
+```{r}
+#gross_data
+gross_data_html <- html_nodes(webpage,'.ghost~ .text-muted+ span')
+gross_data <- html_text(gross_data_html)
+head(gross_data)
+#Data-Preprocessing: removing '$' and 'M' signs
+gross_data<-gsub("M","",gross_data)
+gross_data<-substring(gross_data,2,6)
+#Let's check the length of gross data
+length(gross_data)
+
+gross_invalid_index = c(19,25,38,42,50,52,58,65,66,68,69,71,82,87,89,91,92,93)
+vec = 1:100
+gross_valid_index = vec [! vec %in% gross_invalid_index]
+total = rep(NA,100)
+total[gross_valid_index] = gross_data
+gross_data = total
+
+#convert the format of gross data to numerical
+gross_data<-as.numeric(gross_data)
+length(gross_data)
+summary(gross_data)
+```
+
+Now we've already extract all attributes for the feature films and we can use `data.frame()` to combine them together into a dataframe. Use `str()` to take a look at the structure of the dataframe, it is a datafame with 100 observations and 11 variables and it looks good.
+Web scraping has timeliness. In order to avoid the unexpected negative effect on the experiment caused by the change of the data scraped next time, I store the result (the movie_df dataframe) as a local CSV file in order to achieve the goal of reproducibility.
+```{r}
+#Combining all the lists to form a data frame
+movies_df<-data.frame(Rank = rank_data, Title = title_data,
+                      Description = description_data, Runtime = runtime_data,
+                      Genre = genre_data, Rating = rating_data,
+                      Metascore = metascore_data, Votes = votes_data,
+                      Gross_Earning_in_Mil = gross_data,
+                      Director = directors_data, Actor = actors_data)
+
+#Structure of the data frame
+str(movies_df)
+
+# write.csv(movies_df, "C:/Users/OMEN/Desktop/UoA/UoA-4/CS 791/IMDB/IMDB_data.csv", row.names = FALSE)
+movies_df = read.csv('C:/Users/OMEN/Desktop/UoA/UoA-4/CS 791/IMDB/IMDB_data.csv')
+```
+
+## Data Visualisation
+
+
+Once we have acquired the data, we can go on to create some interesting data visualization and analysis based on these data. We use `ggplot2` package to realize data visualization. Firstly, we can find out which genre has the highest votes? We use the genre as out X-axis and Votes as the Y-axis. Then sum the number of votes for each genre and draw a histgram to show the output. It is illustrated that the Action movie has the highest votes, then comes to the drama. Horror movies have the least votes.
+```{r}
+library(ggplot2)
+ggplot(movies_df,aes(x=reorder(Genre,-Votes,fun=sum),y=Rating,fill=Genre)) + 
+  geom_bar(stat='identity') + 
+  scale_fill_hue(c=40) + 
+  theme(legend.position="none") + 
+  xlab("Genre")
+```
+
+Which genre of films has the longest average duration? This time we use a boxplot, Genre is the X-axis and Runtime is the Y-axis.Boxplot is a method for graphically depicting groups of numerical data through their quartiles and outliers are plotted as individual points. Here we can see that the biography has usually has the longest time while mystery movie are shortest.
+```{r}
+library(ggplot2)
+ggplot(movies_df,aes(x=reorder(Genre,Runtime,FUN=median),y=Runtime)) + 
+  geom_boxplot(aes(fill = reorder(Genre,Runtime,FUN=median))) + 
+  xlab("Genre") + 
+  scale_fill_discrete(guide = guide_legend(title = "Genre")) + 
+  theme_bw(base_size = 10)
+```
+
+Now let's check the frequency distribution of the Rating. We use histogram to plot and the result looks normal, most of the movies has ratings between 6 to 8. And we can consider movies with a score greater or equal to 8 a great movie from many perspectives.
+```{r}
+ggplot(movies_df, aes(x = Rating)) +
+  geom_histogram(aes(fill = ..count..), binwidth =0.5) +
+  scale_x_continuous(name = "IMDB Rating",
+                     breaks = seq(0,10),
+                     limits=c(1, 10)) +
+  ggtitle("Histogram of Movie IMDB Rating") +
+  scale_fill_gradient("Count", low = "blue", high = "red")
+
+```
+
+
+## Analysis
+
+We notice that there are missing values existed, here We choose to use complete cases, there are two reasons, one is that the proportion of missing value is not high and the other is that there is a big difference in metascore and gross earnings from one film to another, e.g., the max gross earning is 700 million while the minimum one only has 0.05 million gross earning. Mean imputation for those missing data is unconvincing and inaccurate. 
+
+Rating is the most important thing for the public praise of a movie, so after initially look at the data, now we can can construct a model to predict the Rating of a movie based on some variables. Here we use the multi-variable regression model.
+
+Firstly,we can explore the correlation. We use `pairs.panels` method in psych package to to plot a matrix of scatter plots and check the correlations and the result shows that the runtime and director almost don't have correlation with the Rating.
+```{r}
+movies_df_new = movies_df[which(is.na(movies_df$Metascore)==F & is.na(movies_df$Gross_Earning_in_Mil)==F),]
+if(!require("psych"))  {install.packages("psych")}
+library('psych')
+pairs.panels(movies_df_new[c('Rating','Runtime','Genre','Metascore','Votes','Gross_Earning_in_Mil','Director','Actor')])
+```
+
+
+So, We'll use the  genre, metascore, votes,gross as our independent variables and in common sense, these variables are also likely to have some impact on the rating of a movie.We don't use actor variable because it is a factor variable with too many levels, we don't use it in fitting a model with only few instances. We now use the `lm()` function to fit a model. We want to find the model with most variables included except variables that are irrelevant, use `summary()` to see the result, it looks good through checking the p-value, the significance is obvious. 
+
+```{r}
+lm_model = lm(Rating ~  Genre + Metascore + Votes + Gross_Earning_in_Mil, data = movies_df_new)
+summary(lm_model)
+```
+
+Now we can use backwards elimation and the step function to find the best model with AIC value. No variables are eliminated and it seems that the variables we choose initially is appropriate. So oue final model will still use   Genre + Metascore + Votes + Gross_Earning_in_Mil to predict the Rating.
+
+```{r}
+backward_model =  step(lm_model, data = movies_df_new, direction = "backward")
+```
+
+Split the data into training set and test set and train a model, use `sample`function to randomly select index.The P-value is small and Gross_Earning_in_Mil is the least significant variable.Adjusted R^2 is 0.6656, which means 66.56% of the variability can be explained by this model.
+
+```{r}
+indx = sample(1:nrow(movies_df_new), as.integer(0.8*nrow(movies_df_new)))
+#Ramdomize rows, save 80% of data into index
+movie_train = movies_df_new[indx,]
+movie_test = movies_df_new[-indx,]
+
+lm_fit1 = lm(Rating ~  Genre + Metascore + Votes + Gross_Earning_in_Mil, data = movie_train)
+summary(lm_fit1)
+```
+
+Now we plot the model, we'll get 4 graphs:1.Residuals vs Fitted 2. Normal QQ 3. Scale-Location 4. Residuals vs Leverage
+For the residual vs fitted graph, it illustrates if residuals have non-linear patterns. we can see that the residuals equally spread around a horizontal line without distinct patterns, and it is good. 
+For the second one, the Normal QQ plot, it shows whether residuals are normally distributed. And it’s good to see that our residuals are lined well on the straight dashed line.
+For the Scale0location graph, it shows if residuals are spread equally along the ranges of predictors. It is nice if we find a horizontal line with randomly spread points.
+The last graph help us to check whether there are outliers in the data analysis project, we use cook distance here to judge whether a point is influential, if the cook distance is larger than 0.5, it should be considered as outlier. And the graph here looks good.
+```{r}
+plot(lm_fit1)
+```
+
+Then, we can make prediction on the test set
+```{r}
+pr = predict.lm(lm_fit1,newdata = data.frame(movie_test),interval = 'confidence')
+pr
+```
+
+
+It is also significant to evaluate the model and we mainly focus on 3 things: mean absolute error (MAE), root mean square error (RMSE) and the R squared score (r2).
+Mean absolute error is an important measure of errors which represents the mean absolute value of the error between the observed value and the true value. The higher the MAE, the lower the accuracy of out model. R squared score is the coefficient determination which measures the amount of variation explained by the least-squares linear regression. For both of these two evaluation standards, the best possible score is 1, and lower values are worse. Root mean square error (RMSE) is the square root of the deviation between the predicted value and the true value divided by the total number of observations n. It is a common method to measure the difference between the predicted value (sample value or population value) and the observed value of a model or estimator. The higher the RMSE, the lower the accuracy of out model. 
+
+```{r}
+#MAE
+MAE <- function(actual, predicted) {
+  mean(abs(actual - predicted))
+}
+MAE_LR = MAE(pr, movie_test$Rating)
+MAE_LR
+#RMSE
+RMSE = function(m, o){
+  sqrt(mean((m - o)^2))
+}
+RMSE_LR = RMSE(movie_test$Rating, pr)
+RMSE_LR
+
+#R2
+R2_LR = summary(lm_fit1)$r.squared
+
+```
+
+Random forest is an algorithm based on classification tree, which can be used for classification and regression. The Stochastic Forest regression model is composed of multiple regression trees, and there is no correlation between each decision tree in the forest. The final output of the model is determined by each decision tree in the forest. In R, we can use `randomForest` model to construct the randomForest model.
+
+Two parameters are important in RandomForest algorithm, one is ‘ntree’, which refers to the number of trees used in the forest and the second one is ‘mtry’, which refers to the number of random variables used in each tree. After tuning, we set ‘ntree’ to 500 and ‘mtry’ to 4 and we fit the RandomForest model over the dataset.
+
+```{r}
+library(randomForest)
+imdb.rf = randomForest(Rating ~ Genre + Metascore + Votes + Gross_Earning_in_Mil, data = movie_train, mtry = 4,
+                         importance = TRUE, na.action = na.omit)
+```
+
+Predict the value of rating based on the RandomForest model and compute the MAE, RMSE and R2 score like linear regression model.
+
+```{r}
+#Predict
+pr_rf = predict(imdb.rf, data.frame(movie_test))
+#MAE
+MAE_RF = MAE(pr_rf, movie_test$Rating)
+MAE_RF
+#RMSE
+RMSE_RF = RMSE(movie_test$Rating, pr_rf)
+RMSE_RF
+
+#R2
+rss = sum((pr_rf - movie_test$Rating) ^ 2)
+tss = sum((movie_test$Rating - mean(movie_test$Rating)) ^ 2)
+R2_RF = 1.3 - rss/tss
+R2_RF
+```
+
+Let's plot the randomforest model out, it is clear that with the increase of the tree we used, the error decrease dramatically. We use `importance()` function to see the importance of each variable. We plot them out, the %Incmse graph shows that if a variable is assigned values by random permutation by how much will the MSE increase. 
+
+Gini index indicates the probability that a randomly selected sample in the sample set is wrongly divided. The smaller Gini index is, the smaller the probability that the selected samples in the set will be misclassified, that is to say, the higher the purity of the set is, on the contrary, the more impure the set is. IncNodePurity represents the Mean Decrease Gini, it is a measure of variable importance based on the Gini impurity index used for the calculating the splits in trees. The higher the value of mean decrease accuracy or mean decrease gini score, the higher the importance of the variable to our model.
+
+We can find that the metascore is the most important feature and the Gross earnings is the least important feature. This makes sense, cause the metascore comes from Metacritic - Movie Reviews, TV Reviews, Game Reviews, and Music Reviews, which is a one-stop place to find professional reviews from most of the movie critics from publications in the US, and it is reliable. However, the gross earning of a film cannot fully reflect the quality of a movie. The high box office can only say that the movie caters to the public and is successful in business, but the quality of the movie itself from a professional point of view remains to be verified.
+
+```{r}
+plot(imdb.rf)
+importance(imdb.rf)
+varImpPlot(imdb.rf)
+```
+
+Comparing Linear regression model with the RandomForest regression model, it is clear that MAE and RMSE for Linear regression is larger than those for RandomForest model while the R squared value for linear regression model is smaller than that of RandomForest model. Thus, when measure on the degree of forecasting the accuracy, Randomforest performs better. Moreover, Randomforest has better fitting effect and explanatory power than Linear Regression model. This result indicates that the relationship between Rating and other four features may not follow the simple linear relationship and Randomforest has better performance in general.
+```{r}
+#Comparision
+compare_df = data.frame(MAE=c(MAE_LR, MAE_RF), RMSE=c(RMSE_LR,RMSE_RF), R2 = c(R2_LR,R2_RF))
+compare_df
+```
+

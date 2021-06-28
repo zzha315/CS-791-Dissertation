@@ -1,0 +1,397 @@
+---
+title: "Vignette 1 (Trunk Road Gritter Tracker)"
+author: "Zhang ZhenYuan zzha315"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, cache = TRUE, message = FALSE)
+```
+## The Data
+
+The [Trunk Road Gritter Tracker](https://www.arcgis.com/apps/webappviewer/index.html?id=2de764a9303848ffb9a4cac0bd0b1aab) is a web application published by [Transport Scotland](https://www.transport.gov.scot/our-approach/keep-scotland-moving/winter-service/) allowing the public to track the current road gritters in operation in Scotland, UK.
+
+The webapp ([Trunk Road Gritter Tracker](https://www.arcgis.com/apps/webappviewer/index.html?id=2de764a9303848ffb9a4cac0bd0b1aab)) shows live tracking of the gritters on Scotland's trunk road network. Displayed are the current locations of the gritters along with their historic trail.
+
+Below we show step-by-step approach 1) scraping the current map data into `R`, and 2) scraping the 2 hour historic trail data. We then move on to visualize and explore the data **CMJT: put a little more information here**
+
+## Web scraping 
+Firstly we need to know what is Web scraping. The purpose of Web scraping is to extract data we want from websites. Web scraping programme can directly access the world wide web by using hypertext transfer protocol or web browser. Although web scraping. can be done manually by software users, the term usually refers to automated processes using BOT or web scraper. It is a form of replication in which specific data is collected and copied from the Internet to a central local database or spreadsheet for later retrieval or analysis. Each webpage has a specific web address called Uniform Resource Locator(URL) and we can navigate to  the web page by visiting the URL. 
+
+In short, a web page is composed of text, pictures, multimedia and other elements through artificial typesetting. Some of these elements are static elements, and some of them need to be obtained by sending HTTP requests from the client to the server. Therefore, when scraping web information, on the one hand, we can first locate the position of the desired element in the web page, and then acquire it, on the other hand, we can get what we want by getting the data returned by the HTTP request.
+
+The `R` package we'll be using to scrape the data is `jsonlite`, the raw data we get is represented in JSON format and `jsonlite` provides a simple and robust JSON parser and generator for R, we'll use the `fromJSON` function in this package.  
+
+Install and load the packages:
+
+```{r}
+if(!require("jsonlite"))  {install.packages("jsonlite")}
+library("jsonlite")
+```
+
+
+### Scraping the current locations {#sec1}
+
+Opening the [Trunk Road Gritter Tracker](https://www.arcgis.com/apps/webappviewer/index.html?id=2de764a9303848ffb9a4cac0bd0b1aab) webpage we see each gritter shown by coloured symbols: yellow represents the operational gritters, grey represents those not currently operating. When we click on a gritter, the information about this gritter will pop up. All the gritters information is stored in a attribute table, which can be opened by clicking the white triangle button at the bottom of the page. 
+
+![Screenshot for the web Page after openning the attribute table](C:/Users/OMEN/Desktop/UoA/UoA-4/CS 791/image/Screenshot for WebPage.png)
+
+Each gritter has 5 attributes:
+  
+  + **Vehicle**, the unique registration number for the gritter, 
+  + **Age (range)**, how long the trail of the gritter has been recorded, 
+  + **Source Date**, the date when the trail of the gritter starts to be recorded
+  + **Source Datetime**, the exact time of the source date that the trail of the gritter starts to be recorded, and
+  + **Gritter Name**,  the specific name of the gritter  (e.g., Gritney Spears); it should be noted that not all gritters have given name.
+
+Now, take Google Chrome as an example, navigate to this webpage and press F12 button and then go to the network tab. When we click to open the attribute table for current vehicle location, the page makes two GET xhr request to get the content we see after clicking the button. The first request will return the total number of gritters information and the second request will get all the attribute data we needed. We will import `httr` and `jsonlite` packages to parse the response. We use a variable to store the link address of the second GET request. `fromJson()` function in `jsonlite` package can help us to convert JSON data to R objects, after this, we can get the nested list that contains data we want to get. 
+
+We can get the data in attribute table by visiting the link address of the second GET xhr request that appears when we open the table. The data is in JSON format so We use `fromJson()` function in `jsonlite` package to convert JSON data to R objects.`flatten = TRUE` option allows us to flatten nested data frames into a regular 2 dimensional tabular structure.
+
+```{r}
+attribute_url = "https://services2.arcgis.com/ppIFLOeUcdFMQzkH/arcgis/rest/services/TSWT_VehiclesAndTrail_2020/FeatureServer/0/query?f=json&where=1%3D1&returnGeometry=true&spatialRel=esriSpatialRelIntersects&geometry=%7B%22xmin%22%3A-516646.2960923321%2C%22ymin%22%3A635046.1250484672%2C%22xmax%22%3A588996.3495111631%2C%22ymax%22%3A1174443.530519488%2C%22spatialReference%22%3A%7B%22wkid%22%3A27700%2C%22latestWkid%22%3A27700%7D%7D&geometryType=esriGeometryEnvelope&inSR=27700&outFields=*&orderByFields=OBJECTID%20ASC&outSR=27700"
+attribute_json = fromJSON((attribute_url), flatten = TRUE)
+```
+
+
+The object `attribute_json` is a list which contains 7 elements:
+
+```{r}
+length(attribute_json)
+```
+
+
+We want the element called `features`, this can be extracted as follows
+
+```{r}
+df_origin = attribute_json$features
+str(df_origin)
+```
+
+This is a data frame with `r nrow(df_origin)` rows and `r ncol(df_origin)` columns. each row corresponds to the data of one gritter and we only need to extract some useful attributes in this data frame.
+
+These attributes are:
+  
+  + **ID**, the unique number for the gritter in attribute table, 
+  + **Vehicle**, the unique registration number for the gritter, 
+  + **Age_Range**, how long the trail of the gritter has been recorded, 
+  + **Source_Date**, the date when the trail of the gritter starts to be recorded
+  + **Source_Datetime**, the exact time of the source date that the trail of the gritter starts to be recorded, 
+  + **Gritter Name**,  the specific name of the gritter  (e.g., Gritney Spears); it should be noted that not all gritters have given name,
+  + **X_coord**, the X coordinate of the gritter on the map,
+and
+  + **Y_coord**, the Y coordinate of the gritter on the map.
+   
+
+```{r}
+ID = df_origin$attributes.OBJECTID
+Vehicle = df_origin$attributes.REGNO
+Age_Range = df_origin$attributes.AGE_CATEGORY
+Source_Date = df_origin$attributes.SOURCE_TS_DATE_LABEL
+Source_Datetime = df_origin$attributes.SOURCE_TS_TIME_LABEL
+Gritter_name = df_origin$attributes.NAME
+X_coord = df_origin$geometry.x
+Y_coord = df_origin$geometry.y
+```
+
+Now organize these useful data in a data frame, it looks good and the amount of the data is also correct.
+
+```{r}
+df = data.frame(ID, Vehicle, Age_Range, Source_Date, Source_Datetime, Gritter_name, X_coord, Y_coord)
+str(df)
+head(df)
+```
+
+Now extract the gritter names for those gritters. Only a small part of gritters have the name and the rest only have `ID` and `Vehicle`. So we use `na.omit()` function to delete the gritters without names and then use `unique()` function to remove duplicate names. 
+```{r}
+## Named Gritters
+unique(na.omit(df$Gritter_name))
+```
+
+### The historic trails
+
+Now we come to the second part of the scraping. This time we are going to get the historical trails within two hours for those gritters and this data is recorded in the second sub-table called `Vehicle Trail (0-2hrs)` in the attribute table. However, the amount of data in this table may be quite a lot. If we use the method before,like just simply parse the GET query link directly, we may find that we can only get part of the data. When we look at the address for GET request, the last part of it is: `resultOffset=0&resultRecordCount=25`,`resultOffset` is used for fetching query results by skipping the specified number of records and starting from the next record and `resultRecordCount` is used for fetching query results up to the this number. In ArcGIS REST services, the default `resultRecordCount` is 25 and the largest limitation is 1000. So we need to use other method to directly get the whole data when the number of records is larger than 1000. Firstly, we should find out how many pieces of records  there are. Similarly, the first GET request will return this number.
+
+```{r}
+count_url = "https://services2.arcgis.com/ppIFLOeUcdFMQzkH/arcgis/rest/services/TSWT_VehiclesAndTrail_2020/FeatureServer/1/query?f=json&returnIdsOnly=true&returnCountOnly=true&where=AGE_CATEGORY%20%3D%200&returnGeometry=false&spatialRel=esriSpatialRelIntersects&geometry=%7B%22xmin%22%3A-528849.8573020834%2C%22ymin%22%3A502027.3078621748%2C%22xmax%22%3A1682435.433904907%2C%22ymax%22%3A1580822.1188042164%2C%22spatialReference%22%3A%7B%22wkid%22%3A27700%2C%22latestWkid%22%3A27700%7D%7D&geometryType=esriGeometryEnvelope&inSR=27700&outSR=27700"
+count = as.numeric(fromJSON(count_url))
+```
+
+We can get 1000 pieces of records at most once at a time, we can extract data as much as we can at one time, so we extract 1000 data once at a time, and the extraction method is almost the same each time, because their URLs all end with `resultrecordcount = 1000` and we only need to change the beginning number in`resultOffset=`. so my method is to divide the records into 2 categories, the first type the record that is an integral multiple of a thousand, and the second type is the remainder of the total divided by one thousand. For example, if we have 2333 records(from 0 to 2332), record 0 to  1999 will be dealt with in first type, the remaining 333 record (2000 to 2332) will be dealt with in second type. 
+
+We use part of the link address which is end with `resultOffset= ` as the first half of out link. Use `&resultRecordCount= ` as the second half of out link, now what we should do is to fill in the corresponding parameters according to different types and then use paste function to construct a complete and valid link.
+
+`int` represent the how many 1000 pieces of data we have, `rem` represent the remainder. As we said before, we use different combinations to form 2 types of URLs. For first category,the number in `resultOffset= ` should be integer like 0,1000,2000,3000 and so on, so we use `(0:(int-1))*1000` to represent this number, and for first category, the number in `&resultRecordCount= ` should be 1000. For the second category, the beginning number in `resultOffset= ` should be the sum of all first category data, which is `int*1000` . And the number in `&resultRecordCount= ` should be the value of the remainder.
+
+```{r}
+#integer (How many 1000)
+int = count%/%1000
+#remainder
+rem = count%%1000
+
+url_prefix = "https://services2.arcgis.com/ppIFLOeUcdFMQzkH/arcgis/rest/services/TSWT_VehiclesAndTrail_2020/FeatureServer/1/query?f=json&where=AGE_CATEGORY%20%3D%200&returnGeometry=true&spatialRel=esriSpatialRelIntersects&geometry=%7B%22xmin%22%3A-528849.8573020834%2C%22ymin%22%3A502027.3078621748%2C%22xmax%22%3A1682435.433904907%2C%22ymax%22%3A1580822.1188042164%2C%22spatialReference%22%3A%7B%22wkid%22%3A27700%2C%22latestWkid%22%3A27700%7D%7D&geometryType=esriGeometryEnvelope&inSR=27700&outFields=*&orderByFields=OBJECTID%20ASC&outSR=27700&resultOffset="
+url_suffix = "&resultRecordCount="
+#use paste function to put them together
+url_int = paste(url_prefix, (0:(int-1))*1000, url_suffix, 1000, sep = "")
+url_rem = paste(url_prefix, int*1000, url_suffix, rem, sep = "")
+```
+
+Then we should get the data. Firstly, we use a for loop to get the first kind of data (e.g., 0-1999), each 1000 data will be put in a data frame, and these data frames is stored in a list called `trail_json_int`. The second kind of date is in the dataframe called `trail_json_rem`.
+
+
+```{r}
+trail_json_int = list()
+for(i in 1:length(url_int)){
+  trail_json_int[[i]] = fromJSON((url_int[i]), flatten = TRUE)
+}
+trail_json_rem = fromJSON(url_rem, flatten = TRUE)
+```
+
+The following part is almost same as the first part of scraping (see section [Scraping the current locations](#sec1)), we can easily get the attributes we want and put them into a data frame. This data frame contains all data we want for first type of records.
+
+```{r}
+df_int_lst = list()
+for (i in 1:length(url_int)){
+  features = trail_json_int[[i]]$features
+  Vehicle = features$attributes.REGNO
+  X_coord = features$attributes.X
+  Y_coord = features$attributes.Y
+  Date = features$attributes.SOURCE_TS_DATE_LABEL
+  Date_time = features$attributes.SOURCE_TS_TIME_LABEL
+  #Organize these atrribute data into a dataframe
+  df_int_lst[[i]] = data.frame(Vehicle, Date, Date_time, X_coord, Y_coord)
+}
+```
+
+Now we can deal with the second type of records separately. Because they are the remainder after dividing by 1000, we can directly get all the data at one time as before
+
+```{r}
+features = trail_json_rem$features
+Vehicle = features$attributes.REGNO
+X_coord = features$attributes.X
+Y_coord = features$attributes.Y
+Date = features$attributes.SOURCE_TS_DATE_LABEL
+Date_time = features$attributes.SOURCE_TS_TIME_LABEL
+df_rem = data.frame(Vehicle, Date, Date_time, X_coord, Y_coord)
+```
+
+Now we put all these dataframes into one list and use `Reduce()` and `merge()` function to combine all data frames. The resulting data frame `df_rem` contains the data for all the historical trails within 2 hours we need. After checking, the content and the amount of the data are accurate.
+
+```{r}
+#put all dataframes into one list
+df_rem_lst = list()
+df_rem_lst[[1]] = df_rem
+df_lst = c(df_int_lst,df_rem_lst)
+
+#Merge all dataframes into one
+df_total = Reduce(function(x,y) merge(x,y,all=T),df_lst)
+## inspect
+head(df_total)
+nrow(df_total)
+```
+
+Let's check the historical trail data we extracted, there are five columns, the 'Vehicle' records the ID of the gritters and 'Date' and 'Date_time' is the time node for storing the track of the gritters. And 'X_coord' and 'Y_coord' records the geographical poisiton for the gritters on the webpage map.Also, for the purpose of reproducibility, I save the dataframe as a csv file for later use.
+
+```{r}
+head(df_total)
+# write.csv(movies_df, "C:/Users/OMEN/Desktop/UoA/UoA-4/CS 791/IMDB/IMDB_data.csv", row.names = FALSE)
+df_total = read.csv('C:/Users/OMEN/Desktop/UoA/UoA-4/CS 791/gritters_files/gritters_trail_example.csv')
+```
+
+
+
+## Viziualisation
+
+In data visualization part, We want to show the trail of the designated gritter in two hours on the map of Scotland. We use `ggplot` package to do the data visualization. ggplot2 is an R extension package for drawing developed by Hadley, chief scientist of Rstudio. It is a very convenient and efficient tool for drawing.We firstly use some map packages like `maps` and `mapproj` to draw the map of UK, the X-coordinate and Y-coordinate correspond to real longitude and latitude. We select `subregion` parameter in `map_data` to 'Great Britain' so that the map of Britain can be plotted. The x-axis is the longitude and the Y-axis if the latitude.
+
+```{r}
+if(!require("dplyr")) {install.packages("dplyr")}
+if(!require("ggplot2")) {install.packages("ggplot2")}
+if(!require("ggplot2")) {install.packages("maps")}
+if(!require("ggplot2")) {install.packages("ggthemes")}
+if(!require("ggplot2")) {install.packages("mapproj")}
+
+library(dplyr)
+library(maps)
+library(ggthemes)
+library(mapproj)
+library(ggplot2)
+## getting map of UK
+uk <- map_data("world") %>%
+  filter(subregion == "Great Britain")
+
+ggplot(uk, aes(x = long, y = lat, group = group)) +
+  geom_polygon() +
+  coord_map() 
+```
+
+Now we should plot the trunk road on the Scotland map so that we can see the trail more clearly. We can found the roads from [shapefile online](https://mapcruzin.com/free-scotland-arcgis-maps-shapefiles.htm) called Scottish roads and it shopuld be useful. We now draw the trail of Scotland on the Britain map we plotted before. As both of the trunk road data and the Britain map use the real world longitude and latitude, we can easily match them together.
+
+```{r}
+## download the appropriate shapefile listed above
+## and read in from shape file
+library(sf)
+load("C:/Users/OMEN/Desktop/UoA/UoA-4/CS 791/trunk_roads.RData")
+ggplot(trunk_roads) + geom_sf()
+## again these are in lat long, so you need to figure out what coordinates your   
+## vehicle trails are in
+ggplot(uk, aes(x = long, y = lat, group = group)) +
+  geom_polygon() +
+  coord_map() +
+  geom_sf(data = trunk_roads, color = "red", inherit.aes = FALSE)
+
+```
+
+Now write a R function to display the trail on the map for the selected cars. The coordinate system used on the web page represents the current coordinates by two multi-digit numbers, however, the UK map generated by `map_data` function uses the true latitude and longitude. Hence, in order to unify the two coordinate systems, a mathematical approach is used and it can relatively accurately convert the coordinates of the map on the web page into the true latitude and longitude. When moving the mouse on the web page, the coordinates of the cursor position will be displayed in the lower left corner of the web page. So we need to unify the two coordinate systems. Here I use a mathematical method, which can relatively accurately convert the coordinates of the map on the web page into the true latitude and longitude, the corresponding function relationship is in the code comment below. The trail information within 2 hours is stored in the df_total dataframe, the data is sorted by the feature "Vehicle", thus, we can use `which` function to get the start row and end row for a specific gritter in the dataframe. Then we get the longitude and latitude for the trails of one gritter and use `geom_point()` function to display them on the map.
+
+We can use `unique()` funciton to check which gritters are available for querying, and then use the `select_trail` function to see this the two-hour historic trail for this specific gritter on map.
+
+```{r}
+#Coordinate System
+#For longitude: Y = -0.000016 * X + 8.43
+#For latitude: Y = 0.0000093*X +49.6
+#Y is the actual longitude/latitude, X is X-coodinate/Y-coordinate on the web page. 
+
+#The function for displaying the trail of the designated gritters in two hours on the map
+
+select_trail = function(Gritter_Vehicle){
+  #Find its line position in the df_total dataframe
+  start_line = min(which(df_total$Vehicle == Gritter_Vehicle))
+  end_line = max(which(df_total$Vehicle == Gritter_Vehicle))
+  #get the coordinate on the map
+  convert2long = -1 * (-0.000016 * df_total[start_line:end_line,]$X_coord + 8.43)
+  convert2lat = 0.0000093 * df_total[start_line:end_line,]$Y_coord + 49.6
+  #Use ggplot to draw the trail 
+  ggplot()+geom_polygon(data=uk, aes(x=long, y=lat, group=group)) +  
+    geom_point(data=df_total[start_line:end_line,], aes(x=convert2long, y=convert2lat), color = 'red', size = 1.0) +
+    geom_sf(data = trunk_roads, color = "white", inherit.aes = FALSE)
+}
+
+select_trail("SJ65FVT")
+```
+
+## Analysis 
+
+We find that the names of the gritters are interesting and we can try to analyze, process, induce and infer the text of their names, so as to study the subjective emotional color of their names. Sentiment analysis is a good option for this target. Sentiment analysis refers to the process of analyzing, processing and extracting subjective text with emotional color by using natural language processing and text mining technology.
+
+The following packages are used in the examples in this article:
+
+  + **tm**, for text mining operations like removing numbers, special characters, punctuations and stop words (Stop words in any language are the most commonly occurring words that have very little value for NLP and should be filtered out. Examples of stop words in English are “the”, “is”, “are”.), 
+  + **snowballc**, for stemming, which is the process of reducing words to their base or root form. For example, a stemming algorithm would reduce the words “fishing”, “fished” and “fisher” to the stem “fish”, 
+  + **wordcloud**, for generating the word cloud plot, 
+  + **RcolorBrewer**, for color palettes used in various plots,
+  + **syuzhet**, for sentiment scores and emotion classification.
+
+
+```{r}
+library("tm")
+library("SnowballC")
+library("wordcloud")
+library("RColorBrewer")
+library("syuzhet")
+library("tidytext")
+```
+
+We extract the Gritter_name from the dataframe that contains the information for all gritters. We use `is.na()` method to delete those missing values. Then, we combine all names into a whole paragraph.
+
+```{r}
+Gritter_name = df$Gritter_name
+Gritter_name = Gritter_name[!is.na(Gritter_name)]
+Gritter_name_txt = paste(Gritter_name, collapse = " ")
+Gritter_name_txt
+```
+
+The next step is clean up the text data.Cleaning the text data starts with making transformations like removing special characters from the text. This is done using the tm_map() function to replace special characters like /, @ and | with a space. The next step is to remove the unnecessary whitespace and convert the text to lower case.
+
+Then remove the stopwords. They are the most commonly occurring words in a language and have very little value in terms of gaining useful information. They should be removed before performing further analysis. Examples of stopwords in English are “the, is, at, on”. There is no single universal list of stop words used by all NLP tools. stopwords in the tm_map() function supports several languages like English, French, German, Italian, and Spanish. Please note the language names are case sensitive. I will also demonstrate how to add your own list of stopwords, which is useful in this Team Health example for removing non-default stop words like “team”, “company”, “health”. Next, remove numbers and punctuation.
+
+The last step is text stemming. It is the process of reducing the word to its root form. The stemming process simplifies the word to its common origin. For example, the stemming process reduces the words “fishing”, “fished” and “fisher” to its stem “fish”.
+
+```{r}
+# Load the data as a corpus
+TextDoc = Corpus(VectorSource(Gritter_name_txt))
+# Convert the text to lower case
+TextDoc = tm_map(TextDoc, content_transformer(tolower))
+# Remove numbers
+TextDoc = tm_map(TextDoc, removeNumbers)
+# Remove english common stopwords
+TextDoc = tm_map(TextDoc, removeWords, stopwords("english"))
+# specify your custom stopwords as a character vector
+TextDoc = tm_map(TextDoc, removeWords, c("s"))
+# Remove punctuations
+TextDoc <- tm_map(TextDoc, removePunctuation)
+```
+
+After cleaning the text data, the next step is to count the occurrence of each word, to identify popular or trending topics. Using the function TermDocumentMatrix() from the text mining package, you can build a Document Matrix – a table containing the frequency of words.The following table of word frequency is the expected output of the head command on RStudio Console.
+
+```{r}
+# Build a term-document matrix
+TextDoc_dtm <- TermDocumentMatrix(TextDoc)
+dtm_m <- as.matrix(TextDoc_dtm)
+# Sort by decreasing value of frequency
+dtm_v <- sort(rowSums(dtm_m),decreasing=TRUE)
+dtm_d <- data.frame(word = names(dtm_v),freq=dtm_v)
+# Display the top 5 most frequent words
+head(dtm_d, 5)
+```
+
+Plotting the top 5 most frequent words using a bar chart is a good basic way to visualize this word frequent data.  They are 'snow', 'sir', 'bear', 'gritter' and 'gritty'. We know that gritter is a vehicle or machine for spreading grit and often salt on roads in icy or potentially icy weather. So it makes senese that the word with highest frequency in the names is 'snow'.
+
+```{r}
+par(mar = c(4, 2, 2, 0))
+barplot(dtm_d[1:5,]$freq, las = 2, names.arg = dtm_d[1:5,]$word,
+        col ="lightgreen", main ="Top 5 most frequent words",
+        ylab = "Word frequencies")
+```
+
+Now, let's generate a word cloud. A word cloud is one of the most popular ways to visualize and analyze qualitative data. It’s an image composed of keywords found within a body of text, where the size of each word indicates its frequency in that body of text. Use the word frequency data frame (table) created previously to generate the word cloud.
+
+Below is a brief description of the arguments in the word cloud function:
+
+  + **words**, words to be plotted, 
+  + **freq**, frequencies of words, 
+  + **min.freq**, words whose frequency is at or above this threshold value is plotted, 
+  + **max.words**, the maximum number of words to display on the plot,
+  + **randon.order**, I have set it to FALSE, so the words are plotted in order of decreasing frequency,
+  + **rot.per**, the percentage of words that are displayed as vertical text (with 90-degree rotation),
+  + **colors**, hanges word colors going from lowest to highest frequencies.
+
+```{r}
+#generate word cloud
+set.seed(040)
+par(mar = c(0,0,0,0))
+wordcloud(words = dtm_d$word, freq = dtm_d$freq, min.freq = 1,
+          max.words=500, random.order=FALSE, rot.per=0.40, 
+          colors=brewer.pal(8, "Dark2"))
+```
+
+Emotion classification is built on the NRC Word-Emotion Association Lexicon (aka EmoLex). The definition of “NRC Emotion Lexicon”, sourced from http://saifmohammad.com/WebPages/NRC-Emotion-Lexicon.htm is “The NRC Emotion Lexicon is a list of English words and their associations with eight basic emotions (anger, fear, anticipation, trust, surprise, sadness, joy, and disgust) and two sentiments (negative and positive). The annotations were manually done by crowdsourcing.”
+
+The `get_nrc_sentiments` function returns a data frame with each row representing a sentence from the original file. The data frame has ten columns (one column for each of the eight emotions, one column for positive sentiment valence and one for negative sentiment valence). The data in the columns (anger, anticipation, disgust, fear, joy, sadness, surprise, trust, negative, positive) can be accessed individually or in sets. . We use the barplot() to show the count of words associated with each sentiment, and we use percentage as the X-axis and use 8 emotions as the Y-axis. we find that the longest bar is ‘trust’, which is a positive emotion
+with more than 20 percent. On the other hand, ‘disgust’, ‘sadness’ and ‘surprise’ occupy the lowest proportion at the same time. “fear” and “anticipation” has the second largest frequency. Generally speaking, the names of the Scottish gritters are mainly positive words, followed by some awe inspiring words.
+
+```{R}
+d <- get_nrc_sentiment(Gritter_name_txt)
+# head(d,10) - to see top 10 lines of the get_nrc_sentiment dataframe
+head (d,10)
+
+par(mar = c(4, 4, 4, 4))
+barplot(
+  sort(colSums(prop.table(d[, 1:8]))), 
+  horiz = TRUE, 
+  cex.names = 0.7, 
+  las = 1, 
+  xlim=c(0,0.25),
+  main = "Emotions in Text", xlab="Percentage"
+)
+```
+
+
+
+
+
+
+
